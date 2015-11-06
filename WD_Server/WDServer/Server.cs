@@ -20,10 +20,9 @@ namespace WDServer
         private int _port = 25001;
         public static int CLIENT_TIMEOUT = 15; // Seconds
 
-        private Socket socket = null;
-        private IPAddress ip = null;
-        private IPEndPoint localIpEndPoint = null;
-        
+        IPEndPoint ipep = new IPEndPoint(IPAddress.Any, 25001);
+        UdpClient newsock;
+
         private ConcurrentDictionary<string, User> _users = new ConcurrentDictionary<string, User>(); // Keys are IP address' of users
         private ConcurrentDictionary<string, Match> _matches = new ConcurrentDictionary<string, Match>();
 
@@ -58,10 +57,9 @@ namespace WDServer
                 Console.WriteLine(" |_   _|___ _ _ _ ___ ___  |    \\ ___|  _|___ _____| |___ ___");
                 Console.WriteLine("   | | | . | | | | -_|  _| |  |  | -_|  _| -_|   | . | -_|  _|");
                 Console.WriteLine("   |_| |___|_____|___|_|   |____/|___|_| |___|_|_|___|___|_|");
-                ip = Dns.GetHostEntry("localhost").AddressList[0];
-                socket = new Socket(ip.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
-                localIpEndPoint = new IPEndPoint(ip, _port);
-                socket.Bind(localIpEndPoint);
+
+                newsock = new UdpClient(ipep);
+              
                 Console.WriteLine("\n Server started using port " + _port + "\n\n");
             }
             catch (SocketException se)
@@ -83,16 +81,21 @@ namespace WDServer
             {
                 try
                 {
+                    IPEndPoint sender = new IPEndPoint(IPAddress.Any, 0);
+
                     byte[] received = new byte[256];
-                    IPEndPoint ipEndPoint = new IPEndPoint(ip, _port);
-                    EndPoint remoteEndPoint = (ipEndPoint);
-                    int bytesReceived = socket.ReceiveFrom(received, ref remoteEndPoint);
+                    received = newsock.Receive(ref sender);
+
                     string dataReceived = Encoding.ASCII.GetString(received).TrimEnd('\0');
-                    string ipAddress = ipEndPoint.Address.ToString();
+                    string ipAddress = sender.Address.ToString();
 
                     // Debug
                     if (DEBUG)
                         Console.WriteLine("Received: " + dataReceived + " from ip: " + ipAddress);
+
+                    // Send back test data
+                    byte[] data1 = Encoding.ASCII.GetBytes("SIR, I HAVE I RECEIVED YOUR DATA.");
+                    newsock.Send(data1, data1.Length, sender);
 
                     // Parse command and arguments
                     Instruction instruction = (Instruction)JsonConvert.DeserializeObject(dataReceived);
@@ -104,7 +107,7 @@ namespace WDServer
                     switch (instruction.Command)
                     {
                         case InstructionType.JOIN:
-                            OnJoin(remoteEndPoint, ipAddress, instruction);
+                            OnJoin(sender, ipAddress, instruction);
                             break;
 
                         case InstructionType.CMD:
@@ -115,8 +118,9 @@ namespace WDServer
                             if (DEBUG)
                             {
                                 // Just echo back (for testing)
-                                byte[] returningByte = Encoding.ASCII.GetBytes(dataReceived);
-                                socket.SendTo(returningByte, remoteEndPoint);
+                                byte[] data = Encoding.ASCII.GetBytes(dataReceived);
+                                newsock.Send(data, data.Length, sender);
+                                Console.WriteLine("Echoed data back");
                             }
                             break;
                     }
@@ -143,12 +147,14 @@ namespace WDServer
             _users.TryAdd(ipAddress, user);
 
             // Find the user's match and add him/her to it
-            FindMatch(user);
+            AddToMatch(user);
         }
 
-        private void FindMatch(User user)
+        private void AddToMatch(User user)
         {
-            // TODO
+            Match m;
+            _matches.TryGetValue(user.MatchId, out m);
+            //if (m)
         }
 
         private void ResetUserTimeout(string ipAddress)
@@ -177,9 +183,14 @@ namespace WDServer
         /// <param name="instruction"></param>
         private void SendToMatch(User user, Instruction instruction)
         {
+            /*
+            string welcome = "Welcome to my test server";
+            data = Encoding.ASCII.GetBytes(welcome);
+            newsock.Send(data, data.Length, sender);
+
             byte[] bytes = ObjectToByteArray(instruction);
             socket.SendTo(bytes, user.EndPoint);
-
+            */
             // TODO
             // Find match
             // Send instruction to everyone in match
